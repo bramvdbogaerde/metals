@@ -15,6 +15,7 @@ import dotty.tools.dotc.core.Contexts.Context
 import dotty.tools.dotc.core.Types
 import dotty.tools.dotc.core.Denotations.Denotation
 import dotty.tools.dotc.core.Flags.*
+import dotty.tools.dotc.core.Scopes.Scope
 import scala.meta.internal.mtags.MtagsEnrichments.*
 
 import dotty.tools.dotc.core.Types.TermRef
@@ -28,21 +29,19 @@ class OverrideCompletion(
     name: TermName,
     t: Template,
     pos: SourcePosition,
-    path: List[Tree],
-    isVar: Boolean
+    path: List[Tree]
 )(using ctx: Context, pcCtx: PresentationCompilerContext):
 
   def contribute(): List[CompletionValue] =
     t.tpe match
       case tr: TermRef =>
-        pcCtx.logger.log(s"override completion ${tr.prefix}")
+        val prefix = tr.prefix
+        val localDecls = prefix.decls
         val members =
-          tr.prefix
+          prefix
             .memberNames(Types.takeAllFilter)
             .map(tr.prefix.member(_))
-            .filter(interestingMember(name))
-
-        pcCtx.logger.log(s"members: $members")
+            .filter(interestingMember(name, localDecls))
 
         members.map { member =>
           // TODO: determine label based on what kind we are overriding. We do not want to show override def if
@@ -57,6 +56,10 @@ class OverrideCompletion(
         pcCtx.logger.log("not matched")
         List()
 
+  /** Returns whether the method is a "var" definition */
+  private def isVarSetter(sym: Symbol): Boolean =
+    sym.is(StableRealizable) && !sym.is(Lazy) && sym.is(Accessor)
+
   /**
    *  Returns true if the member is "interesting".
    *
@@ -64,11 +67,19 @@ class OverrideCompletion(
    *  @param member the member for which we need to decide whether it is interesting
    *  @return true if the member is a method or field that can be overriden from a parent
    */
-  private def interestingMember(name: TermName)(member: Denotation): Boolean =
-    member.symbol.is(Method) &&
-      !member.symbol.is(Private) &&
-      member.symbol.showName.startsWith(name.toString) &&
-      member.symbol.showName != name.toString
+  private def interestingMember(name: TermName, localDecls: Scope)(
+      member: Denotation
+  ): Boolean =
+    // TODO: do not suggest the methods in the local class
+    val sym = member.symbol
+    sym.is(Method) &&
+    !sym.is(Private) &&
+    !isVarSetter(sym) || (isVarSetter(sym) && sym.is(Deferred)) &&
+    !sym.is(Final) &&
+    !sym.is(Synthetic) &&
+    !sym.is(Artifact) &&
+    sym.showName.startsWith(name.toString)
+  end interestingMember
 
   case class OverrideCompletionValue(label: String, override val symbol: Symbol)
       extends CompletionValue:

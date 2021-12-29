@@ -20,6 +20,7 @@ import dotty.tools.dotc.core.Names.Name
 import dotty.tools.dotc.core.Symbols.Symbol
 import dotty.tools.dotc.interactive.Completion
 import dotty.tools.dotc.util.SourcePosition
+import dotty.tools.dotc.core.Flags.*
 
 import java.util.logging.Logger
 
@@ -50,14 +51,14 @@ trait Completions:
       // override def name@@
       case (defdef: DefDef) :: (t: Template) :: _ =>
         pcCtx.logger.log(s"Matches defdef")
-        OverrideCompletion(defdef.name, t, pos, path, isVar = false)
+        OverrideCompletion(defdef.name, t, pos, path)
           .contribute()
 
       // override val name@@
       case (valdef @ ValDef(name, _, Literal(Constant(null)))) ::
           (t: Template) :: _ =>
-        pcCtx.logger.log(s"Matches valdef")
-        OverrideCompletion(valdef.name, t, pos, path, isVar = false)
+        pcCtx.logger.log(s"Matches valdef ${valdef.tpe}")
+        OverrideCompletion(valdef.name, t, pos, path)
           .contribute()
 
       case _ => List()
