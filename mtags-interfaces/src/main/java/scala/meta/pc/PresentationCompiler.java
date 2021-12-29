@@ -171,6 +171,11 @@ public abstract class PresentationCompiler {
      */
     public abstract PresentationCompiler newInstance(String buildTargetIdentifier, List<Path> classpath, List<String> options);
 
+    public PresentationCompiler setLogger(PresentationCompilerLogger logger) {
+       // do nothing
+       return this;
+    }
+
 
     // =============================
     // Intentionally missing methods

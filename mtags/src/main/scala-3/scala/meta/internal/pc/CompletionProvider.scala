@@ -32,7 +32,7 @@ class CompletionProvider(
     completionPos: CompletionPos,
     indexedContext: IndexedContext,
     path: List[Tree]
-):
+)(using pctx: PresentationCompilerContext):
 
   implicit val context: Context = ctx
 
@@ -45,11 +45,13 @@ class CompletionProvider(
         .filterInteresting()
 
     val args = Completions.namedArgCompletions(pos, path)
-    val all = completions ++ args
+    val overrides = Completions.overrideCompletions(pos, path)
+    val all = completions ++ args ++ overrides
 
     val application = CompletionApplication.fromPath(path)
     val ordering = completionOrdering(application)
     val values = application.postProcess(all.sorted(ordering))
+
     (values, result)
   end completions
 
@@ -245,7 +247,7 @@ class CompletionProvider(
             i.kind match
               case CompletionValue.Kind.Compiler
                   if sym.info.paramNamess.nonEmpty && isMember(sym) =>
-                i.copy(symbol = substituteTypeVars(sym))
+                i.update(symbol = substituteTypeVars(sym))
               case _ =>
                 i
           }

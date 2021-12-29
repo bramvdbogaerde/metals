@@ -46,6 +46,7 @@ import org.eclipse.lsp4j.TextEdit
 import org.eclipse.lsp4j.{Position => LspPosition}
 import org.eclipse.lsp4j.{Range => LspRange}
 import org.eclipse.lsp4j.{debug => d}
+import scala.meta.pc.PresentationCompilerLogger
 
 /**
  * Manages lifecycle for presentation compilers in all build targets.
@@ -100,6 +101,9 @@ class Compilers(
       name: String,
       path: AbsolutePath
   ): PresentationCompiler = {
+    MetalsLogger.silentInTests.info(
+      s"Creating presentation compiler for $scalaVersion"
+    )
     val mtags =
       mtagsResolver.resolve(scalaVersion).getOrElse(MtagsBinaries.BuildIn)
 
@@ -738,11 +742,16 @@ class Compilers(
       }
 
     val filteredOptions = plugins.filterSupportedOptions(options)
-    configure(pc, search).newInstance(
-      name,
-      classpath.asJava,
-      (log ++ filteredOptions).asJava
-    )
+    configure(pc, search)
+      .newInstance(
+        name,
+        classpath.asJava,
+        (log ++ filteredOptions).asJava
+      )
+      .setLogger(new PresentationCompilerLogger {
+        override def log(msg: String): Unit =
+          MetalsLogger.default.info(msg)
+      })
   }
 
   private def toDebugCompletionType(

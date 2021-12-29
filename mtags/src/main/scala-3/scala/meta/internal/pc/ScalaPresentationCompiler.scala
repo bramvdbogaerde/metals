@@ -7,6 +7,7 @@ import java.net.URI
 import java.nio.file.Path
 import java.nio.file.Paths
 import java.util.Optional
+import java.util.logging.Logger
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.ScheduledExecutorService
@@ -31,6 +32,7 @@ import scala.meta.internal.tokenizers.Chars
 import scala.meta.pc.DefinitionResult
 import scala.meta.pc.OffsetParams
 import scala.meta.pc.PresentationCompiler
+import scala.meta.pc.PresentationCompilerLogger
 import scala.meta.pc.PresentationCompilerConfig
 import scala.meta.pc.RangeParams
 import scala.meta.pc.SymbolSearch
@@ -94,6 +96,7 @@ case class ScalaPresentationCompiler(
     config: PresentationCompilerConfig = PresentationCompilerConfigImpl(),
     workspace: Option[Path] = None
 ) extends PresentationCompiler:
+  import DocumentationUtils.*
 
   def this() = this("", Nil, Nil)
 
@@ -130,7 +133,17 @@ case class ScalaPresentationCompiler(
       TastyUtils.getTasty(targetUri, isHttpEnabled)
     }
 
+  var logger = new PresentationCompilerLogger:
+    override def log(msg: String): Unit = ()
+
+  override def setLogger(
+      logger: PresentationCompilerLogger
+  ): PresentationCompiler =
+    this.logger = logger;
+    this
+
   def complete(params: OffsetParams): CompletableFuture[CompletionList] =
+    given PresentationCompilerContext = PresentationCompilerContext(logger)
     compilerAccess.withInterruptableCompiler(
       EmptyCompletionList(),
       params.token
@@ -157,6 +170,7 @@ case class ScalaPresentationCompiler(
           val indexedCtx = IndexedContext(locatedCtx)
           val completionPos =
             CompletionPos.infer(pos, params.text, path)(using newctx)
+          logger.log(s"Searching for completions")
           val (completions, searchResult) =
             CompletionProvider(
               pos,
@@ -188,6 +202,7 @@ case class ScalaPresentationCompiler(
               indexedCtx
             )(using newctx)
           }
+
           val isIncomplete = searchResult match
             case SymbolSearch.Result.COMPLETE => false
             case SymbolSearch.Result.INCOMPLETE => true
@@ -199,6 +214,7 @@ case class ScalaPresentationCompiler(
         items.asJava
       )
     }
+  end complete
 
   def definition(params: OffsetParams): CompletableFuture[DefinitionResult] =
     compilerAccess.withNonInterruptableCompiler(
@@ -543,147 +559,17 @@ case class ScalaPresentationCompiler(
       path: List[Tree],
       indexedContext: IndexedContext
   )(using Context): CompletionItem =
-    val printer = SymbolPrinter()(using ctx)
-
-    def completionItemKind(
-        sym: Symbol
-    )(using ctx: Context): CompletionItemKind =
-      if sym.is(Package) || sym.is(Module) then
-        CompletionItemKind.Module // No CompletionItemKind.Package (https://github.com/Microsoft/language-server-protocol/issues/155)
-      else if sym.isConstructor then CompletionItemKind.Constructor
-      else if sym.isClass then CompletionItemKind.Class
-      else if sym.is(Mutable) then CompletionItemKind.Variable
-      else if sym.is(Method) then CompletionItemKind.Method
-      else CompletionItemKind.Field
-
     val editRange = completionPos.toEditRange
-    val sym = completion.symbol
 
-    // For overloaded signatures we get multiple symbols, so we need
-    // to recalculate the description
-    // related issue https://github.com/lampepfl/dotty/issues/11941
-    lazy val kind: CompletionItemKind = completionItemKind(sym)
-
-    val description = printer.completionDetailString(sym, history)
-
-    def mkItem0(
-        ident: String,
-        nameEdit: TextEdit,
-        isFromWorkspace: Boolean = false,
-        additionalEdits: List[TextEdit] = Nil
-    ): CompletionItem =
-
-      val label =
-        kind match
-          case CompletionItemKind.Method =>
-            s"${ident}${description}"
-          case CompletionItemKind.Variable | CompletionItemKind.Field =>
-            s"${ident}: ${description}"
-          case CompletionItemKind.Module | CompletionItemKind.Class =>
-            if isFromWorkspace then s"${ident} -${description}"
-            else s"${ident}${description}"
-          case _ =>
-            ident
-      val item = new CompletionItem(label)
-
-      item.setSortText(f"${idx}%05d")
-      item.setDetail(description)
-      item.setFilterText(completion.label)
-
-      item.setTextEdit(nameEdit)
-
-      item.setAdditionalTextEdits(additionalEdits.asJava)
-
-      val documentation = ParsedComment.docOf(sym)
-      if documentation.nonEmpty then
-        item.setDocumentation(hoverContent(None, documentation.toList))
-
-      if sym.isDeprecated then
-        item.setTags(List(CompletionItemTag.Deprecated).asJava)
-
-      item.setKind(completionItemKind(sym))
-      item
-    end mkItem0
-
-    def mkItem(
-        ident: String,
-        value: String,
-        isFromWorkspace: Boolean = false,
-        additionalEdits: List[TextEdit] = Nil
-    ): CompletionItem =
-      val nameEdit = new TextEdit(
-        editRange,
-        value
-      )
-      mkItem0(ident, nameEdit, isFromWorkspace, additionalEdits)
-
-    def mkWorkspaceItem(
-        ident: String,
-        value: String,
-        additionalEdits: List[TextEdit] = Nil
-    ): CompletionItem =
-      mkItem(ident, value, isFromWorkspace = true, additionalEdits)
-
-    val ident = completion.label
-    completion.kind match
-      case CompletionValue.Kind.Workspace =>
-        path match
-          case (_: Ident) :: (_: Import) :: _ =>
-            mkWorkspaceItem(
-              ident,
-              sym.fullNameBackticked
-            )
-          case _ =>
-            autoImports.editsForSymbol(sym) match
-              case Some(edits) =>
-                edits match
-                  case AutoImportEdits(Some(nameEdit), other) =>
-                    mkItem0(
-                      ident,
-                      nameEdit,
-                      isFromWorkspace = true,
-                      other.toList
-                    )
-                  case _ =>
-                    mkItem(
-                      ident,
-                      ident.backticked,
-                      isFromWorkspace = true,
-                      edits.edits
-                    )
-              case None =>
-                val r = indexedContext.lookupSym(sym)
-                r match
-                  case IndexedContext.Result.InScope =>
-                    mkItem(ident, ident.backticked)
-                  case _ => mkWorkspaceItem(ident, sym.fullNameBackticked)
-      case CompletionValue.Kind.NamedArg => mkItem(ident, ident)
-      case _ => mkItem(ident, ident.backticked)
-    end match
+    completion.asItem(
+      editRange,
+      idx,
+      path,
+      autoImports,
+      indexedContext,
+      history
+    )
   end completionItems
-
-  private def hoverContent(
-      typeInfo: Option[String],
-      comments: List[ParsedComment]
-  )(using ctx: Context): MarkupContent =
-    val buf = new StringBuilder
-    typeInfo.foreach { info =>
-      buf.append(s"""```scala
-                    |$info
-                    |```
-                    |""".stripMargin)
-    }
-    comments.foreach { comment => buf.append(comment.renderAsMarkdown) }
-    markupContent(buf.toString)
-  end hoverContent
-
-  private def markupContent(content: String): MarkupContent =
-    if content.isEmpty then null
-    else
-      val markup = new MarkupContent
-      markup.setKind("markdown")
-      markup.setValue(content.trim)
-      markup
 
   def signatureToSignatureInformation(
       signature: Signatures.Signature

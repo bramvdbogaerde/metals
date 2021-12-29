@@ -1546,7 +1546,9 @@ class MetalsLanguageServer(
     result
   }
   @JsonRequest("textDocument/completion")
-  def completion(params: CompletionParams): CompletableFuture[CompletionList] =
+  def completion(
+      params: CompletionParams
+  ): CompletableFuture[CompletionList] =
     CancelTokens.future { token => compilers.completions(params, token) }
 
   @JsonRequest("completionItem/resolve")

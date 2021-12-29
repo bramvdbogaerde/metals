@@ -3,6 +3,8 @@ package scala.meta.internal.pc
 import scala.meta.internal.mtags.MtagsEnrichments.*
 
 import dotty.tools.dotc.ast.tpd.Apply
+import dotty.tools.dotc.ast.tpd.DefDef
+import dotty.tools.dotc.ast.tpd.ValDef
 import dotty.tools.dotc.ast.tpd.Block
 import dotty.tools.dotc.ast.tpd.Ident
 import dotty.tools.dotc.ast.tpd.Literal
@@ -19,11 +21,15 @@ import dotty.tools.dotc.core.Symbols.Symbol
 import dotty.tools.dotc.interactive.Completion
 import dotty.tools.dotc.util.SourcePosition
 
+import java.util.logging.Logger
+
 trait Completions:
   def namedArgCompletions(
       pos: SourcePosition,
       path: List[Tree]
-  )(using ctx: Context): List[CompletionValue] =
+  )(using
+      ctx: Context
+  ): List[CompletionValue] =
     path match
       case (ident: Ident) :: (app: Apply) :: _ => // fun(arg@@)
         ArgCompletion(Some(ident), app, pos).contribute
@@ -31,6 +37,33 @@ trait Completions:
         ArgCompletion(None, app, pos).contribute
       case _ =>
         Nil
+
+  def overrideCompletions(
+      pos: SourcePosition,
+      path: List[Tree]
+  )(using
+      ctx: Context,
+      pcCtx: PresentationCompilerContext
+  ): List[CompletionValue] =
+    pcCtx.logger.log(s"path $path")
+    path match
+      // override def name@@
+      case (defdef: DefDef) :: (t: Template) :: _ =>
+        pcCtx.logger.log(s"Matches defdef")
+        OverrideCompletion(defdef.name, t, pos, path, isVar = false)
+          .contribute()
+
+      // override val name@@
+      case (valdef @ ValDef(name, _, Literal(Constant(null)))) ::
+          (t: Template) :: _ =>
+        pcCtx.logger.log(s"Matches valdef")
+        OverrideCompletion(valdef.name, t, pos, path, isVar = false)
+          .contribute()
+
+      case _ => List()
+    end match
+  end overrideCompletions
+end Completions
 
 case class ArgCompletion(
     ident: Option[Ident],
