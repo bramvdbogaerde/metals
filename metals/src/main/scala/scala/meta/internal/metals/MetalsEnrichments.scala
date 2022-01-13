@@ -82,19 +82,16 @@ object MetalsEnrichments
     def dataKind: String = Option(buildTarget.getDataKind()).getOrElse("")
 
     def asScalaBuildTarget: Option[b.ScalaBuildTarget] = {
-      if (isSbtBuild) {
-        decodeJson(buildTarget.getData, classOf[b.SbtBuildTarget])
-          .map(_.getScalaBuildTarget)
-      } else {
-        decodeJson(buildTarget.getData, classOf[b.ScalaBuildTarget])
-      }
+      asSbtBuildTarget
+        .map(_.getScalaBuildTarget)
+        .orElse(decodeJson(buildTarget.getData, classOf[b.ScalaBuildTarget]))
     }
 
     def asSbtBuildTarget: Option[b.SbtBuildTarget] = {
-      buildTarget.getDataKind match {
-        case "sbt" => decodeJson(buildTarget.getData, classOf[b.SbtBuildTarget])
-        case _ => None
-      }
+      if (isSbtBuild)
+        decodeJson(buildTarget.getData, classOf[b.SbtBuildTarget])
+      else
+        None
     }
   }
 
@@ -671,7 +668,7 @@ object MetalsEnrichments
   }
 
   implicit class XtensionPositionRange(range: s.Range) {
-    def inString(text: String): String = {
+    def inString(text: String): Option[String] = {
       var i = 0
       var max = 0
       while (max < range.startLine) {
@@ -680,7 +677,10 @@ object MetalsEnrichments
       }
       val start = i + range.startCharacter
       val end = i + range.endCharacter
-      text.substring(start, end)
+      if (start < text.size && end <= text.size)
+        Some(text.substring(start, end))
+      else
+        None
     }
   }
 

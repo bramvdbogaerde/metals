@@ -2,6 +2,8 @@ package scala.meta.internal.metals
 
 import javax.annotation.Nullable
 
+import scala.meta.internal.metals.newScalaFile.NewFileTypes
+
 import ch.epfl.scala.{bsp4j => b}
 import org.eclipse.lsp4j.Location
 import org.eclipse.lsp4j.TextDocumentIdentifier
@@ -338,10 +340,22 @@ object ServerCommands {
   val NewScalaFile = new ListParametrizedCommand[String](
     "new-scala-file",
     "Create new scala file",
-    """|Create and open new file with either scala class, object, trait, package object or worksheet.
-       |
-       |Note: requires 'metals/inputBox' capability from language client.
-       |""".stripMargin,
+    s"""|Create and open new Scala file.
+        |
+        |The currently allowed Scala file types that ca be passed in are:
+        |
+        | - ${NewFileTypes.ScalaFile.id} (${NewFileTypes.ScalaFile.label})
+        | - ${NewFileTypes.Class.id} (${NewFileTypes.Class.label})
+        | - ${NewFileTypes.CaseClass.id} (${NewFileTypes.CaseClass.label})
+        | - ${NewFileTypes.Enum.id} (${NewFileTypes.Enum.label})
+        | - ${NewFileTypes.Object.id} (${NewFileTypes.Object.label})
+        | - ${NewFileTypes.Trait.id} (${NewFileTypes.Trait.label})
+        | - ${NewFileTypes.PackageObject.id} (${NewFileTypes.PackageObject.label})
+        | - ${NewFileTypes.Worksheet.id} (${NewFileTypes.Worksheet.label})
+        | - ${NewFileTypes.AmmoniteScript.id} (${NewFileTypes.AmmoniteScript.label})
+        |
+        |Note: requires 'metals/inputBox' capability from language client.
+        |""".stripMargin,
     """|[string[]], where the first is a directory location for the new file.
        |The second and third positions correspond to the file name and file type to allow for quick
        |creation of a file if all are present.
@@ -351,10 +365,17 @@ object ServerCommands {
   val NewJavaFile = new ListParametrizedCommand[String](
     "new-java-file",
     "Create new java file",
-    """|Create and open new file with either java class, enum or interface.
-       |
-       |Note: requires 'metals/inputBox' capability from language client.
-       |""".stripMargin,
+    s"""|Create and open a new Java file.
+        |
+        |The currently allowed Java file types that ca be passed in are:
+        |
+        | - ${NewFileTypes.JavaClass.id} (${NewFileTypes.JavaClass.label})
+        | - ${NewFileTypes.JavaInterface.id} (${NewFileTypes.JavaInterface.label})
+        | - ${NewFileTypes.JavaEnum.id} (${NewFileTypes.JavaEnum.label})
+        | - ${NewFileTypes.JavaRecord.id} (${NewFileTypes.JavaRecord.label})
+        |
+        |Note: requires 'metals/inputBox' capability from language client.
+        |""".stripMargin,
     """|[string[]], where the first is a directory location for the new file.
        |The second and third positions correspond to the file name and file type to allow for quick
        |creation of a file if all are present.
@@ -426,12 +447,6 @@ object ServerCommands {
     "https://github.com/scalacenter/bloop",
     "Bloop on GitHub",
     "Open the Metals repository on GitHub"
-  )
-
-  val ChatOnGitter = new OpenBrowserCommand(
-    "https://gitter.im/scalameta/metals",
-    "Chat on Gitter",
-    "Open the Metals channel on Gitter to discuss with other Metals users."
   )
 
   val ChatOnDiscord = new OpenBrowserCommand(

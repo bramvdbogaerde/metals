@@ -8,7 +8,7 @@ object MD5 {
   def compute(string: String): String = {
     compute(ByteBuffer.wrap(string.getBytes(StandardCharsets.UTF_8)))
   }
-  def compute(buffer: ByteBuffer): String = {
+  private def compute(buffer: ByteBuffer): String = {
     val md = MessageDigest.getInstance("MD5")
     md.update(buffer)
     bytesToHex(md.digest())
